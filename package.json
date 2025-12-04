@@ -1,0 +1,12 @@
+{
+  "name": "twilio-metrics-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.6.2",
+    "twilio": "^4.20.0"
+  }
+}

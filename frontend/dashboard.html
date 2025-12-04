@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>SMS Dashboard</title>
+<!--FAVICON_PLACEHOLDER-->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<!--STYLE_PLACEHOLDER-->
+</head>
+<body>
+<div class="wrap">
+  <h1>SMS Dashboard</h1>
+  <p class="sub">All UTC. Served by the backend; calls /api/metrics with your session token.</p>
+
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="sms">SMS Dashboard</button>
+    <button class="tab-btn" data-tab="forms" id="formsTabBtn" style="display:none">Forms</button>
+  </div>
+
+  <div id="smsTab" class="tab-panel active">
+
+  <div class="row">
+    <div>
+      <div class="muted" style="font-size:12px">From</div>
+      <input id="from" type="date">
+    </div>
+    <div>
+      <div class="muted" style="font-size:12px">To</div>
+      <input id="to" type="date">
+    </div>
+    <div id="tenantWrap" style="display:none">
+      <div class="muted" style="font-size:12px">Tenant</div>
+      <div class="select-wrap">
+        <select id="tenantSelect"></select>
+        <span class="select-arrow" aria-hidden="true">▾</span>
+      </div>
+    </div>
+    <button id="load">Load metrics</button>
+    <button id="ingestOpen" style="display:none">Ingest days</button>
+    <button id="runAllIngest" style="display:none">Run yesterday for everybody</button>
+    <div id="userMenuContainer" class="user-menu-wrap" style="display:none">
+      <button id="userMenuBtn">User management</button>
+      <div id="userMenu" class="user-menu">
+        <button type="button" data-action="create">Create user</button>
+        <button type="button" data-action="edit">Edit user</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); margin-top:12px">
+    <div class="card metric-card"><div class="muted">Sum Segments</div><div class="num" id="segments">0</div></div>
+    <div class="card metric-card"><div class="muted">STOP (inbound)</div><div class="num" id="stopCount">0</div></div>
+    <div class="card metric-card"><div class="muted">Segments total price</div><div class="amount-row"><div class="num" id="priceAbs">0</div><div class="currency muted" id="priceAbsCur">USD</div></div></div>
+    <div class="card metric-card"><div class="muted">Unique Prospects (outbound)</div><div class="num" id="uniqueProspectsTotal">0</div></div>
+    <div class="card metric-card"><div class="muted">Total messages</div><div class="num" id="totalMsgs">0</div></div>
+    <div class="card metric-card card-click" id="calendarEventsCard"><div class="muted">Calendar events</div><div class="num" id="calendarEventsCount">0</div></div>
+  </div>
+
+  
+  <div class="grid" style="grid-template-columns: repeat(6, minmax(0,1fr)); margin-top:12px">
+    <div class="card metric-card"><div class="muted">MMS Cost — Total</div><div class="amount-row"><div class="num" id="mmsTotalCost">—</div><div class="currency muted" id="mmsTotalCur">—</div></div></div>
+    <div class="card metric-card"><div class="muted" title="Usage category: sms-messages-carrierfees">Carrier Fees — SMS</div><div class="amount-row"><div class="num" id="smsCarrierFees">—</div><div class="currency muted" id="smsCarrierCur">—</div></div></div>
+    <div class="card metric-card"><div class="muted" title="Usage category: mms-messages-carrierfees">Carrier Fees — MMS</div><div class="amount-row"><div class="num" id="mmsCarrierFees">—</div><div class="currency muted" id="mmsCarrierCur">—</div></div></div>
+    <div class="card metric-card"><div class="muted">Carrier Fees — Total</div><div class="amount-row"><div class="num" id="carrierFeesTotal">—</div><div class="currency muted" id="carrierFeesCur">—</div></div></div>
+    <div class="card metric-card"><div class="muted" title="Usage category: lookups">Lookups — Total</div><div class="amount-row"><div class="num" id="lookupsCost">—</div><div class="currency muted" id="lookupsCur">—</div></div></div>
+    <div class="card metric-card"><div class="muted">total fees + mms + lookups + segments</div><div class="amount-row"><div class="num" id="totalFeesMmsLookups">—</div><div class="currency muted" id="totalFeesMmsLookupsCur">—</div></div></div>
+  </div>
+
+  
+  <div class="grid" style="grid-template-columns: repeat(2, minmax(0,1fr)); margin-top:12px">
+    <div class="card"><div class="chart-wrap"><canvas id="statusChart"></canvas></div></div>
+    <div class="card"><div class="chart-wrap" id="dirChartWrap" style="visibility:hidden"><canvas id="dirChart"></canvas></div></div>
+  </div>
+
+  
+  <div class="card" id="errorsCard" style="margin-top:12px; display:none;">
+    <div class="muted" style="margin-bottom:8px">Errors (by code)</div>
+    <div id="errorsGrid" class="grid" style="grid-template-columns: repeat(auto-fill,minmax(220px,1fr));"></div>
+  </div>
+
+  
+  <div class="card" style="margin-top:12px">
+    <div class="muted">Repeat Responders (≥1 replies, excl. STOP)</div>
+    <div style="display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:8px">
+      <div class="muted" style="font-size:12px">Sort by</div>
+      <select id="repeatSort">
+        <option value="replies">Replies (desc)</option>
+        <option value="sentiment-asc">Sentiment A→Z</option>
+        <option value="sentiment-desc">Sentiment Z→A</option>
+      </select>
+    </div>
+    <div id="repeatResponders" style="margin-top:6px"></div>
+    <div id="e" class="err"></div>
+  </div>
+  </div>
+
+  <div id="formsTab" class="tab-panel">
+    <div class="row">
+      <div>
+        <div class="muted" style="font-size:12px">From</div>
+        <input id="formsFrom" type="date">
+      </div>
+      <div>
+        <div class="muted" style="font-size:12px">To</div>
+        <input id="formsTo" type="date">
+      </div>
+      <button id="formsLoad">Load submissions</button>
+    </div>
+    <div id="formsError" class="err" style="margin-top:8px"></div>
+    <div class="card" id="formsResults" style="margin-top:12px; display:none;">
+      <div class="muted" style="margin-bottom:8px">Form submissions</div>
+      <div class="table-scroll">
+        <table class="simple-table" id="formsTable">
+          <thead>
+            <tr>
+              <th>Contact</th>
+              <th>Policy Status #1</th>
+              <th>Insurance Provider #1</th>
+              <th>Plan Name #1</th>
+              <th>Coverage Type #1</th>
+              <th>Coverage Amount #1</th>
+              <th>Coverage Length #1</th>
+              <th>Billing Frequency (Modal) #1</th>
+              <th>Modal Premium ($) #1</th>
+              <th>Annualized Premium ($) #1</th>
+              <th>Applied Rating #1</th>
+              <th>Number of Policies Sold</th>
+              <th>Are you updating fields/Quoting or is this a NEW Sale</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody id="formsTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div id="loading" class="loading">
+  <div>
+    <div class="spinner"></div>
+    <div id="loadingNote" class="muted" style="text-align:center; margin-top:8px">Loading… Hold on tight.</div>
+  </div>
+</div>
+<div id="userListModal" class="modal-backdrop">
+  <div class="modal" style="min-width:360px;max-width:640px;max-height:70vh;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div class="muted" style="font-size:14px">Users</div>
+      <button id="userListClose" class="muted" style="background:#0b1220;border:1px solid #26334d">Close</button>
+    </div>
+    <div id="userListError" class="err" style="margin-bottom:8px"></div>
+    <div id="userListContent" style="max-height:55vh;overflow:auto"></div>
+  </div>
+</div>
+<div id="userCreateModal" class="modal-backdrop">
+  <div class="modal" style="min-width:320px;max-width:520px;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:16px;margin:0">Create user</h2>
+      <button id="userCreateClose" class="muted" style="background:#0b1220;border:1px solid #26334d">Close</button>
+    </div>
+    <form id="userCreateForm" class="form-grid">
+      <div>
+        <label for="userCreateUsername">Username</label>
+        <input id="userCreateUsername" name="username" autocomplete="off">
+      </div>
+      <div>
+        <label for="userCreatePassword">Password</label>
+        <input id="userCreatePassword" name="password" type="password">
+      </div>
+      <div>
+        <label for="userCreateRole">Role</label>
+        <select id="userCreateRole" name="role">
+          <option value="owner">owner</option>
+          <option value="super">super</option>
+        </select>
+      </div>
+      <div data-role-section="owner">
+        <label for="userCreateTenantName">Tenant name</label>
+        <input id="userCreateTenantName" name="tenantName" data-role-field="owner">
+      </div>
+      <div class="row" data-role-section="owner">
+        <div style="flex:1">
+          <label for="userCreateTwilioSid">Twilio Account SID</label>
+          <input id="userCreateTwilioSid" name="twilioAccountSid" data-role-field="owner">
+        </div>
+        <div style="flex:1">
+          <label for="userCreateTwilioToken">Twilio Auth Token</label>
+          <input id="userCreateTwilioToken" name="twilioAuthToken" data-role-field="owner">
+        </div>
+      </div>
+      <div class="row" data-role-section="owner">
+        <div style="flex:1">
+          <label for="userCreateGhlLocation">GHL Location ID</label>
+          <input id="userCreateGhlLocation" name="ghlLocationId" data-role-field="owner">
+        </div>
+        <div style="flex:1">
+          <label for="userCreateGhlApiKey">GHL API Key</label>
+          <input id="userCreateGhlApiKey" name="ghlApiKey" data-role-field="owner">
+        </div>
+      </div>
+      <div data-role-section="owner">
+        <label for="userCreateGhlAlias">GHL Alias</label>
+        <input id="userCreateGhlAlias" name="ghlAlias" data-role-field="owner">
+      </div>
+      <div data-role-section="owner">
+        <label for="userCreateCalendarId">Calendar ID</label>
+        <input id="userCreateCalendarId" name="calendarId" data-role-field="owner">
+      </div>
+      <div data-role-section="owner">
+        <label for="userCreateFormId">Form ID</label>
+        <input id="userCreateFormId" name="formId" data-role-field="owner">
+      </div>
+      <div id="userCreateError" class="err"></div>
+      <div class="form-actions">
+        <button type="submit">Create user</button>
+        <button type="button" id="userCreateCancel" class="muted" style="background:#0b1220;border:1px solid #26334d">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="userEditModal" class="modal-backdrop">
+  <div class="modal" style="min-width:320px;max-width:520px;max-height:80vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="font-size:16px;margin:0">Edit user</h2>
+      <button id="userEditClose" class="muted" style="background:#0b1220;border:1px solid #26334d">Close</button>
+    </div>
+    <form id="userEditForm" class="form-grid">
+      <input type="hidden" id="userEditId" name="userId">
+      <div>
+        <label for="userEditUsername">Username</label>
+        <input id="userEditUsername" name="username" autocomplete="off">
+      </div>
+      <div>
+        <label for="userEditPassword">New password</label>
+        <input id="userEditPassword" name="password" type="password" placeholder="Leave blank to keep current">
+      </div>
+      <div>
+        <label for="userEditRole">Role</label>
+        <select id="userEditRole" name="role">
+          <option value="owner">owner</option>
+          <option value="super">super</option>
+        </select>
+      </div>
+      <div data-role-section="owner">
+        <label for="userEditTenantName">Tenant name</label>
+        <input id="userEditTenantName" name="tenantName" data-role-field="owner">
+      </div>
+      <div class="row" data-role-section="owner">
+        <div style="flex:1">
+          <label for="userEditTwilioSid">Twilio Account SID</label>
+          <input id="userEditTwilioSid" name="twilioAccountSid" data-role-field="owner">
+        </div>
+        <div style="flex:1">
+          <label for="userEditTwilioToken">Twilio Auth Token</label>
+          <input id="userEditTwilioToken" name="twilioAuthToken" data-role-field="owner" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+      <div class="row" data-role-section="owner">
+        <div style="flex:1">
+          <label for="userEditGhlLocation">GHL Location ID</label>
+          <input id="userEditGhlLocation" name="ghlLocationId" data-role-field="owner">
+        </div>
+        <div style="flex:1">
+          <label for="userEditGhlApiKey">GHL API Key</label>
+          <input id="userEditGhlApiKey" name="ghlApiKey" data-role-field="owner" placeholder="Leave blank to keep current">
+        </div>
+      </div>
+      <div data-role-section="owner">
+        <label for="userEditGhlAlias">GHL Alias</label>
+        <input id="userEditGhlAlias" name="ghlAlias" data-role-field="owner">
+      </div>
+      <div data-role-section="owner">
+        <label for="userEditCalendarId">Calendar ID</label>
+        <input id="userEditCalendarId" name="calendarId" data-role-field="owner">
+      </div>
+      <div data-role-section="owner">
+        <label for="userEditFormId">Form ID</label>
+        <input id="userEditFormId" name="formId" data-role-field="owner">
+      </div>
+      <div id="userEditError" class="err"></div>
+      <div class="form-actions">
+        <button type="submit">Save changes</button>
+        <button type="button" id="userEditCancel" class="muted" style="background:#0b1220;border:1px solid #26334d">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div id="errorsModal" class="modal-backdrop">
+  <div class="modal errors-modal">
+    <div class="modal-head">
+      <div>
+        <div id="errorsModalTitle" class="muted" style="font-size:14px"></div>
+        <div id="errorsModalSubtitle" class="muted" style="font-size:12px"></div>
+      </div>
+      <div class="modal-head-actions">
+        <button id="errorsExport" class="ghost-btn">Export CSV</button>
+        <button id="errorsClose" class="ghost-btn">Close</button>
+      </div>
+    </div>
+    <div id="errorsModalCount" class="muted" style="font-size:12px"></div>
+    <div id="errorsModalList" class="errors-list"></div>
+  </div>
+</div>
+<div id="calendarEventsModal" class="modal-backdrop">
+  <div class="modal" style="min-width:320px;max-width:520px;max-height:70vh;overflow:hidden">
+    <div style="display:flex;justify-content:space-between;align-items-center;margin-bottom:12px">
+      <div class="muted" style="font-size:14px">Calendar events</div>
+      <button id="calendarEventsClose" class="muted" style="background:#0b1220;border:1px solid #26334d">Close</button>
+    </div>
+    <div id="calendarEventsList" style="max-height:55vh;overflow:auto"></div>
+  </div>
+</div>
+<div id="ingestModal" class="modal-backdrop">
+  <div class="modal" style="min-width:320px;max-width:420px;">
+    <h2 style="margin-bottom:12px">Ingest days</h2>
+    <div class="muted" style="font-size:12px;margin-bottom:12px">Select a UTC date range to re-import messages from Twilio.</div>
+    <div class="form-grid">
+      <div>
+        <label for="ingestFrom">Ingest from</label>
+        <input id="ingestFrom" type="date">
+      </div>
+      <div>
+        <label for="ingestTo">Ingest to</label>
+        <input id="ingestTo" type="date">
+      </div>
+    </div>
+    <div id="ingestError" class="err" style="margin-top:8px"></div>
+    <div class="form-actions">
+      <button id="ingestRun">Run ingest</button>
+      <button id="ingestCancel" class="muted" style="background:#0b1220;border:1px solid #26334d">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!--SCRIPT_PLACEHOLDER-->
+</body>
+</html>

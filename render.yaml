@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: lh360smsdashboard
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npx vercel dev --listen 0.0.0.0:$PORT
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENCRYPTION_KEY_32B_HEX
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: GHL_API_KEY
+        sync: false
+      - key: GHL_LOCATION_ID
+        sync: false
+      - key: SEED_TOKEN
+        sync: false
+      - key: CRON_SECRET
+        sync: false
