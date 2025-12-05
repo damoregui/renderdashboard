@@ -49,9 +49,10 @@ window.addEventListener("DOMContentLoaded", () => {
     { id: "B1SaLltrM0Go3AuAMeHl", label: "Billing Frequency (Modal) #1" },
     { id: "KxD2iCYDJEAgCgUI6zy5", label: "Modal Premium ($) #1" },
     { id: "uPOMJUqI2DzNlKrCyNoG", label: "Annualized Premium ($) #1" },
-    { id: "P4RjVrU0IfQNUfWSzRWU", label: "Applied Rating #1" },
+    { id: "vM4B6u8oEDhQ9PLBcmkn", label: "Policy Status #2" },
     { id: "70FLn04r8zQQi0kFLSm0", label: "Number of Policies Sold" },
     { id: "XUhYbv85sUliPKvKw6wV", label: "Are you updating fields/Quoting or is this a NEW Sale" },
+    { id: "9O0ZAd6QgUn7EgU9leZm", label: "AI Appointment?" },
   ];
   const tenantWrap = $("tenantWrap");
   const tenantSelect = $("tenantSelect");
@@ -74,6 +75,7 @@ window.addEventListener("DOMContentLoaded", () => {
   const formsError = $("formsError");
   const formsResults = $("formsResults");
   const formsTableBody = $("formsTableBody");
+  const formsSummary = $("formsSummary");
   const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
   const smsTab = $("smsTab");
   const formsTab = $("formsTab");
@@ -164,6 +166,16 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!Number.isFinite(val)) return 0;
     const factor = Math.pow(10, decimals);
     return Math.round((val + Number.EPSILON) * factor) / factor;
+  }
+  function parseNumeric(val){
+    if (val === undefined || val === null) return 0;
+    const num = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
+    return Number.isFinite(num) ? num : 0;
+  }
+  function formatCurrency(val){
+    if (!Number.isFinite(val)) return '0.00';
+    const rounded = roundCurrency(val, 2);
+    return rounded.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
   function isValidDay(str){ return typeof str === "string" && /^\d{4}-\d{2}-\d{2}$/.test(str); }
   function formatYmdParts(year, month, day){ const mm=String(month+1).padStart(2,"0"); const dd=String(day).padStart(2,"0"); return `${year}-${mm}-${dd}`; }
@@ -1180,6 +1192,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!formsTableBody || !formsResults) return;
     formsTableBody.innerHTML = "";
     const list = Array.isArray(submissions) ? submissions : [];
+    renderFormsSummary(list);
     if (!list.length){
       const tr = document.createElement("tr");
       const td = document.createElement("td");
@@ -1191,15 +1204,40 @@ window.addEventListener("DOMContentLoaded", () => {
       formsResults.style.display = _tenantHasForm ? "block" : "none";
       return;
     }
+    const totals = { coverage:0, modal:0, annual:0, ai:0 };
     list.forEach(sub => {
       const tr = document.createElement("tr");
       const tdContact = document.createElement("td");
-      tdContact.textContent = sub?.contactId || "—";
+      const contactLabel = (sub?.contactName || "").trim() || sub?.contactId || "—";
+      if (sub?.contactUrl && (sub?.contactId || sub?.contactName)){
+        const link = document.createElement("a");
+        link.href = sub.contactUrl;
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        link.textContent = contactLabel;
+        tdContact.appendChild(link);
+        if (sub?.contactId){
+          const small = document.createElement("div");
+          small.className = "muted";
+          small.style.fontSize = "11px";
+          small.textContent = sub.contactId;
+          tdContact.appendChild(small);
+        }
+      } else {
+        tdContact.textContent = contactLabel;
+      }
       tr.appendChild(tdContact);
       FORM_FIELD_COLUMNS.forEach(col => {
         const td = document.createElement("td");
         const val = sub?.fields ? sub.fields[col.id] : undefined;
         td.textContent = (val === undefined || val === null || val === "") ? "—" : String(val);
+        if (col.id === 'wzQ2pzo1xXUl08CfQuAu'){ totals.coverage += parseNumeric(val); }
+        if (col.id === 'KxD2iCYDJEAgCgUI6zy5'){ totals.modal += parseNumeric(val); }
+        if (col.id === 'uPOMJUqI2DzNlKrCyNoG'){ totals.annual += parseNumeric(val); }
+        if (col.id === '9O0ZAd6QgUn7EgU9leZm' && typeof val !== 'undefined'){
+          const lowered = String(val).trim().toLowerCase();
+          if (lowered === 'true') totals.ai += 1;
+        }
         tr.appendChild(td);
       });
       const tdCreated = document.createElement("td");
@@ -1208,6 +1246,36 @@ window.addEventListener("DOMContentLoaded", () => {
       formsTableBody.appendChild(tr);
     });
     formsResults.style.display = "block";
+    renderFormsSummary(list, totals);
+  }
+  function renderFormsSummary(list, totals){
+    if (!formsSummary) return;
+    formsSummary.innerHTML = "";
+    if (!list || !list.length){
+      formsSummary.style.display = "none";
+      return;
+    }
+    const summary = totals || { coverage:0, modal:0, annual:0, ai:0 };
+    const cards = [
+      { label: "Coverage Amount #1 total", value: formatCurrency(summary.coverage) },
+      { label: "Modal Premium ($) #1 total", value: formatCurrency(summary.modal) },
+      { label: "Annualized Premium ($) #1 total", value: formatCurrency(summary.annual) },
+      { label: "AI Appointments (true)", value: summary.ai.toLocaleString('en-US') }
+    ];
+    cards.forEach(card => {
+      const el = document.createElement("div");
+      el.className = "card metric-card";
+      const num = document.createElement("div");
+      num.className = "num";
+      num.textContent = card.value;
+      const cap = document.createElement("div");
+      cap.className = "muted";
+      cap.textContent = card.label;
+      el.appendChild(num);
+      el.appendChild(cap);
+      formsSummary.appendChild(el);
+    });
+    formsSummary.style.display = "grid";
   }
   async function loadForms(){
     if (!formsError) return;

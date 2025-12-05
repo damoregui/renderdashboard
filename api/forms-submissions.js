@@ -114,14 +114,23 @@ module.exports = async (req, res) => {
 
     const mapped = mappedRaw.map(sub => {
       const cf = contactMap.get(sub.contactId)?.customFields || {};
+      const contact = contactMap.get(sub.contactId) || {};
       const others = sub.others || {};
       const pick = (id) => cf[id] !== undefined && cf[id] !== null && cf[id] !== ''
         ? cf[id]
         : others[id];
+      const contactName = [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim()
+        || contact.name
+        || '';
+      const contactUrl = sub.contactId && loc.locationId
+        ? `https://app.leadshub360.com/v2/location/${encodeURIComponent(loc.locationId)}/contacts/detail/${encodeURIComponent(sub.contactId)}`
+        : '';
 
       return {
         id: sub.id,
         contactId: sub.contactId,
+        contactName,
+        contactUrl,
         formId: sub.formId,
         createdAt: sub.createdAt,
         fields: {
@@ -134,9 +143,10 @@ module.exports = async (req, res) => {
           'B1SaLltrM0Go3AuAMeHl': pick('B1SaLltrM0Go3AuAMeHl'),
           'KxD2iCYDJEAgCgUI6zy5': pick('KxD2iCYDJEAgCgUI6zy5'),
           'uPOMJUqI2DzNlKrCyNoG': pick('uPOMJUqI2DzNlKrCyNoG'),
-          'P4RjVrU0IfQNUfWSzRWU': pick('P4RjVrU0IfQNUfWSzRWU'),
+          'vM4B6u8oEDhQ9PLBcmkn': pick('vM4B6u8oEDhQ9PLBcmkn'),
           '70FLn04r8zQQi0kFLSm0': pick('70FLn04r8zQQi0kFLSm0'),
           'XUhYbv85sUliPKvKw6wV': pick('XUhYbv85sUliPKvKw6wV'),
+          '9O0ZAd6QgUn7EgU9leZm': pick('9O0ZAd6QgUn7EgU9leZm'),
         },
       };
     });

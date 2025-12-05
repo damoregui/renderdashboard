@@ -1,77 +1,200 @@
-// server.js - Express entrypoint for Render deployment
-try { require('./lib/loadEnv'); } catch {}
 
-const express = require('express');
+// Simple HTTP server to run the dashboard on platforms like DigitalOcean App Platform.
+// It adapts the existing serverless-style handlers under /api into a single Node process.
+
+const http = require('http');
+const fs = require('fs');
 const path = require('path');
 
-const app = express();
+// --- Helpers ---------------------------------------------------------------
 
-// Basic middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-// --- Static assets & root login page ---
-const ROOT_DIR = __dirname;
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(ROOT_DIR, 'index.html'));
-});
-
-app.get('/favicon.png', (req, res) => {
-  res.sendFile(path.join(ROOT_DIR, 'favicon.png'));
-});
-
-// --- Helper to bind Vercel-style handlers ---
-function bindAll(route, handler) {
-  app.all(route, (req, res) => handler(req, res));
+function enhanceReq(req) {
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    req.pathname = url.pathname;
+    const query = {};
+    for (const [key, value] of url.searchParams.entries()) {
+      if (Object.prototype.hasOwnProperty.call(query, key)) {
+        const prev = query[key];
+        if (Array.isArray(prev)) query[key].push(value);
+        else query[key] = [prev, value];
+      } else {
+        query[key] = value;
+      }
+    }
+    req.query = query;
+  } catch {
+    req.pathname = req.url || '/';
+    req.query = {};
+  }
 }
 
-// Main app HTML (dashboard shell)
+function sendNotFound(res) {
+  res.statusCode = 404;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+}
+
+function sendMethodNotAllowed(res, allow) {
+  res.statusCode = 405;
+  if (allow) res.setHeader('Allow', allow);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify({ ok: false, error: 'method_not_allowed' }));
+}
+
+// --- Static files ----------------------------------------------------------
+
+const ROOT_DIR = __dirname;
+const INDEX_HTML_PATH = path.join(ROOT_DIR, 'index.html');
+const FAVICON_PNG_PATH = path.join(ROOT_DIR, 'favicon.png');
+
+// --- Import handlers -------------------------------------------------------
+
 const appHandler = require('./api/app');
-app.get('/api/app', (req, res) => appHandler(req, res));
-
-// Auth
 const loginHandler = require('./api/login');
-app.post('/api/login', (req, res) => loginHandler(req, res));
+const metricsHandler = require('./api/metrics');
+const errorsHandler = require('./api/errors');
+const formsSubmissionsHandler = require('./api/forms-submissions');
+const dateAvailabilityHandler = require('./api/date-availability');
+const ghlContactLookupHandler = require('./api/ghl-contact-lookup');
+const ingestHandler = require('./api/ingest');
+const refreshHandler = require('./api/refresh');
+const responderHandler = require('./api/responder');
+const seedHandler = require('./api/seed');
+const superSeedHandler = require('./api/super-seed');
+const tenantsHandler = require('./api/tenants');
+const usageDayHandler = require('./api/usage-day');
+const usersHandler = require('./api/users');
+const cronDailyIngestHandler = require('./api/cron/daily-ingest');
 
-// Simple API routes
-bindAll('/api/date-availability', require('./api/date-availability'));
-bindAll('/api/forms-submissions', require('./api/forms-submissions'));
-bindAll('/api/tenants', require('./api/tenants'));
-bindAll('/api/metrics', require('./api/metrics'));
-bindAll('/api/errors', require('./api/errors'));
-bindAll('/api/users', require('./api/users'));
-bindAll('/api/refresh', require('./api/refresh'));
-bindAll('/api/responder', require('./api/responder'));
-bindAll('/api/cron/daily-ingest', require('./api/cron/daily-ingest'));
-bindAll('/api/ingest', require('./api/ingest'));
-bindAll('/api/usage-day', require('./api/usage-day'));
-bindAll('/api/ghl-contact-lookup', require('./api/ghl-contact-lookup'));
-bindAll('/api/seed', require('./api/seed'));
-bindAll('/api/super-seed', require('./api/super-seed'));
+// --- Server & routing ------------------------------------------------------
 
-// Dynamic tenant/location routes (mimic Vercel's query merging)
-const locationsIndexHandler = require('./api/tenants/[tenantId]/ghl/locations/index');
-app.all('/api/tenants/:tenantId/ghl/locations', (req, res) => {
-  req.query = Object.assign({}, req.query, { tenantId: req.params.tenantId });
-  return locationsIndexHandler(req, res);
+const server = http.createServer((req, res) => {
+  enhanceReq(req);
+
+  // Very simple health-check endpoint
+  if (req.pathname === '/healthz') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.end(JSON.stringify({ ok: true, status: 'healthy' }));
+  }
+
+  // Static assets for the login page
+  if (req.method === 'GET' && req.pathname === '/') {
+    fs.readFile(INDEX_HTML_PATH, (err, data) => {
+      if (err) {
+        console.error('index_read_error', err);
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.end(JSON.stringify({ ok: false, error: 'index_read_error' }));
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(data);
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && req.pathname === '/favicon.png') {
+    fs.readFile(FAVICON_PNG_PATH, (err, data) => {
+      if (err) {
+        res.statusCode = 404;
+        return res.end();
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'image/png');
+      res.end(data);
+    });
+    return;
+  }
+
+  // Application routes
+  if (req.pathname === '/api/login') {
+    if (req.method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+    return loginHandler(req, res);
+  }
+
+  if (req.pathname === '/api/app') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return appHandler(req, res);
+  }
+
+  if (req.pathname === '/api/metrics') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return metricsHandler(req, res);
+  }
+
+  if (req.pathname === '/api/errors') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return errorsHandler(req, res);
+  }
+
+  if (req.pathname === '/api/forms-submissions') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return formsSubmissionsHandler(req, res);
+  }
+
+  if (req.pathname === '/api/date-availability') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return dateAvailabilityHandler(req, res);
+  }
+
+  if (req.pathname === '/api/ghl-contact-lookup') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return ghlContactLookupHandler(req, res);
+  }
+
+  if (req.pathname === '/api/ingest') {
+    if (req.method !== 'POST' && req.method !== 'GET') return sendMethodNotAllowed(res, 'GET,POST');
+    return ingestHandler(req, res);
+  }
+
+  if (req.pathname === '/api/refresh') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return refreshHandler(req, res);
+  }
+
+  if (req.pathname === '/api/responder') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return responderHandler(req, res);
+  }
+
+  if (req.pathname === '/api/seed') {
+    if (req.method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+    return seedHandler(req, res);
+  }
+
+  if (req.pathname === '/api/super-seed') {
+    if (req.method !== 'POST') return sendMethodNotAllowed(res, 'POST');
+    return superSeedHandler(req, res);
+  }
+
+  if (req.pathname === '/api/tenants') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return tenantsHandler(req, res);
+  }
+
+  if (req.pathname === '/api/usage-day') {
+    if (req.method !== 'GET') return sendMethodNotAllowed(res, 'GET');
+    return usageDayHandler(req, res);
+  }
+
+  if (req.pathname === '/api/users') {
+    if (!['GET', 'POST', 'PUT'].includes(req.method)) return sendMethodNotAllowed(res, 'GET,POST,PUT');
+    return usersHandler(req, res);
+  }
+
+  if (req.pathname === '/api/cron/daily-ingest') {
+    if (req.method !== 'GET' && req.method !== 'POST') return sendMethodNotAllowed(res, 'GET,POST');
+    return cronDailyIngestHandler(req, res);
+  }
+
+  // Fallback
+  return sendNotFound(res);
 });
 
-const locationsItemHandler = require('./api/tenants/[tenantId]/ghl/locations/[locationId]');
-app.all('/api/tenants/:tenantId/ghl/locations/:locationId', (req, res) => {
-  req.query = Object.assign({}, req.query, {
-    tenantId: req.params.tenantId,
-    locationId: req.params.locationId,
-  });
-  return locationsItemHandler(req, res);
-});
-
-// Fallback 404 handler
-app.use((req, res) => {
-  res.status(404).json({ ok: false, error: 'not_found' });
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`[render] Server listening on port ${PORT}`);
+// DigitalOcean sets PORT; default to 8080 locally.
+const port = process.env.PORT || 8080;
+server.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
 });

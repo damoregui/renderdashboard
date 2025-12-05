@@ -74,6 +74,7 @@ module.exports = async (req, res) => {
     const cronSecret = process.env.CRON_SECRET;
     const providedSecret = (req.headers['x-cron-secret'] || '').toString();
     const hasValidSecret = !!cronSecret && providedSecret === cronSecret;
+    const isVercelCron = String(req.headers['x-vercel-cron'] || '').toLowerCase() === 'true';
     let claims = null;
     const authHeader = req.headers['authorization'];
     if (authHeader){

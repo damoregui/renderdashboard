@@ -4,7 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npx vercel dev --listen 0.0.0.0:$PORT
     envVars:
       - key: NODE_ENV
         value: production
