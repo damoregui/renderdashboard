@@ -391,7 +391,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const f = (from.value||"").trim();
     const tt = (to.value||"").trim();
     if (!f || !tt){ errorBox.textContent = "Pick dates."; return; }
-    const loadingMsg = "Loading… Hold on tight.";
+    const loadingMsg = "Loading… this could take up to 5 minutes.";
     setLoading(true, loadingMsg);
     _calendarEvents = [];
     try{
@@ -1359,7 +1359,7 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
     const params = new URLSearchParams({ from: fromVal, to: toVal });
-    const loadingMsg = "Processing… This may take several minutes. Hold on tight.";
+    const loadingMsg = "Loading… this could take up to 5 minutes.";
     setLoading(true, loadingMsg);
     try{
       const resp = await fetch(`/api/ingest?${params.toString()}`, { method: "POST", headers: hdr(token) });
@@ -1384,7 +1384,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (errorBox) errorBox.textContent = "No session token. Please sign in again.";
       return;
     }
-    const loadingMsg = "Processing… This may take several minutes. Hold on tight.";
+    const loadingMsg = "Loading… this could take up to 5 minutes.";
     setLoading(true, loadingMsg);
     try{
       const resp = await fetch("/api/cron/daily-ingest", { method: "POST", headers: hdr(token) });
